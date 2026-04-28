@@ -87,7 +87,15 @@ async fn execute_select_query(sql: &str, pool: &MySqlPool) -> QueryExecutionResu
     let start_time = std::time::Instant::now();
     let original_query = sql.to_string();
 
-    let limited_sql = if !sql.to_lowercase().contains(" limit ") {
+    // Auto-LIMIT only applies to SELECT/WITH; the other read-style
+    // statements (SHOW / DESCRIBE / DESC / EXPLAIN) either don't accept
+    // LIMIT or accept a different LIMIT grammar that's not worth
+    // distinguishing here. Run them verbatim.
+    let lower = sql.to_lowercase();
+    let trimmed = lower.trim_start();
+    let supports_auto_limit =
+        trimmed.starts_with("select") || trimmed.starts_with("with");
+    let limited_sql = if supports_auto_limit && !lower.contains(" limit ") {
         format!("{} LIMIT {}", sql.trim_end_matches(';'), 1_000)
     } else {
         sql.to_string()
@@ -227,6 +235,18 @@ fn decode_cell_value(row: &MySqlRow, column: &MySqlColumn, index: usize) -> (Str
             .try_get::<rust_decimal::Decimal, _>(index)
             .map(|v| (v.to_string(), false))
             .unwrap_or_else(|_| ("NULL".to_string(), true)),
+        "JSON" => {
+            // The `json` feature on sqlx-mysql lets us decode straight
+            // into serde_json::Value. We re-serialize compactly so the
+            // result grid shows canonical JSON instead of Rust's Debug.
+            match row.try_get::<sqlx::types::Json<serde_json::Value>, _>(index) {
+                Ok(j) => match serde_json::to_string(&j.0) {
+                    Ok(s) => (s, false),
+                    Err(_) => (j.0.to_string(), false),
+                },
+                Err(_) => ("NULL".to_string(), true),
+            }
+        }
         "DATE" => row
             .try_get::<chrono::NaiveDate, _>(index)
             .map(|v| (v.to_string(), false))
@@ -243,10 +263,18 @@ fn decode_cell_value(row: &MySqlRow, column: &MySqlColumn, index: usize) -> (Str
             .try_get::<chrono::DateTime<chrono::Utc>, _>(index)
             .map(|v| (v.to_string(), false))
             .unwrap_or_else(|_| ("NULL".to_string(), true)),
-        "BLOB" | "TINYBLOB" | "MEDIUMBLOB" | "LONGBLOB" | "BINARY" | "VARBINARY" => row
-            .try_get::<Vec<u8>, _>(index)
-            .map(|v| (format!("0x{}", hex::encode(&v)), false))
-            .unwrap_or_else(|_| ("NULL".to_string(), true)),
+        "BLOB" | "TINYBLOB" | "MEDIUMBLOB" | "LONGBLOB" | "BINARY" | "VARBINARY" => {
+            // MySQL 8 also returns information_schema text columns as
+            // VARBINARY. If the bytes look like UTF-8 we surface a
+            // string; otherwise fall back to the hex view.
+            match row.try_get::<Vec<u8>, _>(index) {
+                Ok(bytes) => match std::str::from_utf8(&bytes) {
+                    Ok(s) => (s.to_string(), false),
+                    Err(_) => (format!("0x{}", hex::encode(&bytes)), false),
+                },
+                Err(_) => ("NULL".to_string(), true),
+            }
+        }
         _ => ("NULL".to_string(), true),
     }
 }
