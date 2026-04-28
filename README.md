@@ -51,3 +51,37 @@ AI Completions are triggered via code actions (cmd + .) or via the inline comple
 ### Building
 
 See [Mac App Build](./MAC_APP_BUILD.md) for building locally on MacOS
+
+### Local development databases
+
+`docker-compose.yml` brings up both engines for end-to-end testing:
+
+```bash
+docker compose up -d            # both Postgres and MySQL
+docker compose up -d mysql      # MySQL only
+docker compose up -d db         # Postgres only
+```
+
+| Engine     | Host        | Port | DB     | User   | Password |
+|------------|-------------|------|--------|--------|----------|
+| PostgreSQL | `localhost` | 5432 | `test` | `test` | `test`   |
+| MySQL 8.4  | `localhost` | 3306 | `test` | `test` | `test`   |
+
+Both containers seed themselves on first start (`init.sql` and
+`init.mysql.sql`). To rebuild from scratch (re-runs the seed scripts):
+
+```bash
+docker compose down -v && docker compose up -d
+```
+
+### Running the test suite
+
+```bash
+cargo test           # 35 unit + integration tests, no DB required
+cargo run --bin build-app  # produce PGUI.app
+```
+
+Integration tests live under [`tests/`](./tests) and use a process-wide
+in-memory keyring backend (see [`tests/common/mod.rs`](./tests/common/mod.rs)).
+Nothing in the test suite touches the real macOS Keychain or a live
+database.
