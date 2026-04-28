@@ -2,8 +2,6 @@
 
 mod connections;
 mod history;
-#[cfg(test)]
-mod migration_tests;
 mod types;
 
 pub use connections::ConnectionsRepository;
@@ -38,7 +36,11 @@ impl AppStore {
         Self::from_path(db_path).await
     }
 
-    async fn from_path(db_path: PathBuf) -> Result<Self> {
+    /// Open (or create) an `AppStore` against a specific SQLite path.
+    /// Schema initialization and migrations run unconditionally on each
+    /// open. Used by tests to point at a temp file; production callers
+    /// should use [`AppStore::singleton`].
+    pub async fn from_path(db_path: PathBuf) -> Result<Self> {
         if let Some(parent) = db_path.parent() {
             std::fs::create_dir_all(parent)?;
         }

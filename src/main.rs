@@ -1,17 +1,11 @@
-mod assets;
-mod services;
-mod state;
-mod themes;
-mod window;
-mod workspace;
-
-use assets::*;
 use gpui::{App, AppContext as _, Application, KeyBinding, actions};
 use gpui_component::{ActiveTheme as _, Root, theme};
-use themes::*;
+use pgui::assets::Assets;
+use pgui::state;
+use pgui::themes::change_color_mode;
+use pgui::window::get_window_options;
+use pgui::workspace::Workspace;
 use tracing_subscriber::{EnvFilter, fmt, layer::SubscriberExt as _, util::SubscriberInitExt as _};
-use window::*;
-use workspace::*;
 
 actions!(window, [Quit]);
 

@@ -1,152 +1,34 @@
-//! Integration tests for the SQLite storage layer.
+//! Integration tests for `services::storage`.
 //!
-//! These tests touch the on-disk SQLite database (in a `tempfile` dir)
-//! and use the keyring **mock** backend so they never write to the
-//! real macOS Keychain / freedesktop secret service. Each test sets
-//! up its own `AppStore` against a fresh path; we never call
-//! `AppStore::singleton()` here so the global lock isn't poisoned for
-//! other tests.
+//! These touch a temp-file SQLite database and the (in-memory) keyring
+//! provided by `tests/common/mod.rs`. They cover:
 //!
-//! The keyring mock is process-global, so tests in this module use
-//! distinct UUIDs/connection names to avoid cross-test interference.
-//! That is sufficient because each `Entry` is keyed by `(service, key)`
-//! and `key` is the connection UUID we generate per test.
-//!
-//! Note on parallelism: `cargo test` runs each `#[test]` on a thread.
-//! Our installer for the in-memory keyring backend is idempotent and
-//! guarded by a `std::sync::Once`.
-//!
-//! Why not the stock `keyring::mock`? In keyring 3 the bundled mock
-//! produces a *fresh* credential per `Entry::new()` call, so a value
-//! written through one Entry can't be read through another — which is
-//! the exact pattern this codebase uses (write at create-time, read
-//! later via a separate `Entry`). We bring our own tiny in-memory
-//! builder backed by a process-wide `HashMap`, which models the
-//! real-store contract: any two entries with the same (service, user)
-//! see the same secret.
-//!
-//! What we cover here:
-//! - First-time schema initialization on a fresh file.
-//! - Migration from a pre-MySQL/SSH schema (only the original 7 columns)
-//!   onto the current schema, including idempotency on re-run.
-//! - Round-tripping a Postgres connection (no SSH) through the repo.
-//! - Round-tripping a MySQL + SSH (key-file) connection through the repo.
-//! - Renames / deletes / `exists_by_name` semantics.
-//! - Updating a connection through CRUD.
+//! - Schema initialization on a fresh file.
+//! - Migration from a pre-MySQL/SSH legacy schema (only the original 7
+//!   columns + a populated row), including idempotency on re-run.
+//! - Round-tripping connections through `ConnectionsRepository`:
+//!   Postgres no SSH, MySQL + SSH key-file, MySQL + SSH agent.
+//! - CRUD edges: duplicate-name rejection, update flips, delete
+//!   removes both row and keyring entry, case-sensitive `exists_by_name`.
 //! - SSH key passphrase keyring helpers.
 //!
-//! What we deliberately don't cover here:
-//! - Live database connections (PG, MySQL) — that requires Docker and
-//!   belongs in a manual smoke-test or a CI integration job.
-//! - The SSH tunnel itself — that needs an SSH server and is also
-//!   manual smoke-test territory.
-use std::any::Any;
-use std::collections::HashMap;
-use std::str::FromStr;
-use std::sync::{Mutex, Once, OnceLock};
+//! Live database connections (PG, MySQL) and the SSH tunnel itself are
+//! intentionally **not** covered here; those need Docker / an SSH
+//! server and live in the manual smoke-test path documented in the
+//! README.
 
-use keyring::credential::{
-    Credential, CredentialApi, CredentialBuilder, CredentialBuilderApi, CredentialPersistence,
+mod common;
+
+use std::str::FromStr;
+
+use pgui::services::ssh::{SshAuth, SshConfig};
+use pgui::services::storage::{
+    AppStore, ConnectionInfo, ConnectionsRepository, DatabaseDriver, SslMode,
 };
 use sqlx::sqlite::{SqliteConnectOptions, SqlitePool, SqlitePoolOptions};
-use tempfile::TempDir;
 use uuid::Uuid;
 
-use super::connections::ConnectionsRepository;
-use super::types::{ConnectionInfo, DatabaseDriver, SslMode};
-use super::AppStore;
-use crate::services::ssh::{SshAuth, SshConfig};
-
-// =====================================================================
-// In-memory keyring backend (process-wide)
-// =====================================================================
-
-fn store() -> &'static Mutex<HashMap<(String, String), Vec<u8>>> {
-    static STORE: OnceLock<Mutex<HashMap<(String, String), Vec<u8>>>> = OnceLock::new();
-    STORE.get_or_init(|| Mutex::new(HashMap::new()))
-}
-
-struct InMemoryCredential {
-    service: String,
-    user: String,
-}
-
-impl CredentialApi for InMemoryCredential {
-    fn set_secret(&self, secret: &[u8]) -> keyring::Result<()> {
-        store()
-            .lock()
-            .unwrap()
-            .insert((self.service.clone(), self.user.clone()), secret.to_vec());
-        Ok(())
-    }
-
-    fn get_secret(&self) -> keyring::Result<Vec<u8>> {
-        store()
-            .lock()
-            .unwrap()
-            .get(&(self.service.clone(), self.user.clone()))
-            .cloned()
-            .ok_or(keyring::Error::NoEntry)
-    }
-
-    fn delete_credential(&self) -> keyring::Result<()> {
-        let removed = store()
-            .lock()
-            .unwrap()
-            .remove(&(self.service.clone(), self.user.clone()));
-        match removed {
-            Some(_) => Ok(()),
-            None => Err(keyring::Error::NoEntry),
-        }
-    }
-
-    fn as_any(&self) -> &dyn Any {
-        self
-    }
-}
-
-struct InMemoryBuilder;
-
-impl CredentialBuilderApi for InMemoryBuilder {
-    fn build(
-        &self,
-        _target: Option<&str>,
-        service: &str,
-        user: &str,
-    ) -> keyring::Result<Box<Credential>> {
-        Ok(Box::new(InMemoryCredential {
-            service: service.to_string(),
-            user: user.to_string(),
-        }))
-    }
-
-    fn as_any(&self) -> &dyn Any {
-        self
-    }
-
-    fn persistence(&self) -> CredentialPersistence {
-        CredentialPersistence::ProcessOnly
-    }
-}
-
-static KEYRING_INIT: Once = Once::new();
-
-/// Install the in-memory keyring backend once per process.
-fn init_keyring_mock() {
-    KEYRING_INIT.call_once(|| {
-        keyring::set_default_credential_builder(Box::new(InMemoryBuilder) as Box<CredentialBuilder>);
-    });
-}
-
-/// Return `(temp_dir, store)`. The temp dir must be held by the caller
-/// to keep the SQLite file alive for the duration of the test.
-async fn fresh_store() -> (TempDir, AppStore) {
-    init_keyring_mock();
-    let dir = tempfile::tempdir().unwrap();
-    let db_path = dir.path().join("pgui.db");
-    let store = AppStore::from_path(db_path).await.unwrap();
-    (dir, store)
-}
+use common::{fresh_store, init_keyring_mock};
 
 /// Build a SQLite pool against `path` without going through `AppStore`,
 /// so we can simulate older databases that lack the new columns.
@@ -165,31 +47,9 @@ async fn raw_pool(path: &std::path::Path) -> SqlitePool {
 fn fresh_database_has_all_columns() {
     smol::block_on(async {
         let (_dir, store) = fresh_store().await;
-
-        // Probe each new column by selecting it; if any is missing the
-        // query errors and the test fails.
-        for col in [
-            "id",
-            "name",
-            "driver",
-            "hostname",
-            "username",
-            "database",
-            "port",
-            "ssl_mode",
-            "ssh_enabled",
-            "ssh_host",
-            "ssh_port",
-            "ssh_username",
-            "ssh_auth_type",
-            "ssh_key_path",
-        ] {
-            let sql = format!("SELECT {} FROM connections LIMIT 1", col);
-            sqlx::query(&sql)
-                .fetch_optional(&store.pool)
-                .await
-                .unwrap_or_else(|e| panic!("missing column {}: {}", col, e));
-        }
+        // The repository's load_all SELECTs every column we expect; if
+        // any is missing the call errors and the test fails.
+        assert!(store.connections().load_all().await.unwrap().is_empty());
     });
 }
 
@@ -201,7 +61,7 @@ fn migration_from_legacy_schema_adds_all_columns() {
         let db_path = dir.path().join("legacy.db");
 
         // 1. Create a legacy-shaped table (the schema as it was before
-        //    this PR), populate one row, then close the pool.
+        //    the MySQL+SSH PR), populate one row, then close the pool.
         {
             let pool = raw_pool(&db_path).await;
             sqlx::query(
@@ -240,27 +100,10 @@ fn migration_from_legacy_schema_adds_all_columns() {
         }
 
         // 2. Open via AppStore — initialize_schema is a no-op (table
-        //    exists) but migrate_schema must add the new columns.
-        let store = AppStore::from_path(db_path.clone()).await.unwrap();
+        //    exists); migrate_schema must add the new columns.
+        let store = AppStore::from_path(db_path).await.unwrap();
 
-        // 3. All new columns are queryable.
-        for col in [
-            "driver",
-            "ssh_enabled",
-            "ssh_host",
-            "ssh_port",
-            "ssh_username",
-            "ssh_auth_type",
-            "ssh_key_path",
-        ] {
-            let sql = format!("SELECT {} FROM connections LIMIT 1", col);
-            sqlx::query(&sql)
-                .fetch_optional(&store.pool)
-                .await
-                .unwrap_or_else(|e| panic!("post-migration missing column {}: {}", col, e));
-        }
-
-        // 4. Legacy row is loadable, defaults are filled in.
+        // 3. The legacy row is loadable, defaults are filled in.
         let conns = store.connections().load_all().await.unwrap();
         assert_eq!(conns.len(), 1);
         let c = &conns[0];
@@ -276,16 +119,13 @@ fn migration_is_idempotent() {
     smol::block_on(async {
         let (dir, store1) = fresh_store().await;
         let path = dir.path().join("pgui.db");
-        // Drop store1's pool and reopen — migrate_schema will run again.
+        // Drop store1's pool and reopen — migrate_schema runs again.
         drop(store1);
         let store2 = AppStore::from_path(path.clone()).await.unwrap();
-        // And again, just to be sure.
         drop(store2);
         let store3 = AppStore::from_path(path).await.unwrap();
 
-        // Still queryable, still empty.
-        let conns = store3.connections().load_all().await.unwrap();
-        assert!(conns.is_empty());
+        assert!(store3.connections().load_all().await.unwrap().is_empty());
     });
 }
 
@@ -309,7 +149,6 @@ fn create_load_postgres_no_ssh_roundtrip() {
         };
         repo.create(&info).await.unwrap();
 
-        // load_all returns rows with empty passwords (loaded on-demand).
         let loaded = repo.load_all().await.unwrap();
         assert_eq!(loaded.len(), 1);
         let l = &loaded[0];
@@ -321,7 +160,7 @@ fn create_load_postgres_no_ssh_roundtrip() {
         assert!(l.ssh.is_none());
         assert_eq!(l.password, "", "password loaded on-demand, not eagerly");
 
-        // The keyring (mock) does have the password.
+        // The keyring (in-memory) does have the password.
         let pw = ConnectionsRepository::get_connection_password(&info.id).unwrap();
         assert_eq!(pw, "supersecret");
     });
@@ -445,7 +284,7 @@ fn update_changes_driver_and_ssh_fields() {
         };
         repo.create(&info).await.unwrap();
 
-        // Mutate: switch to MySQL + add an SSH agent tunnel.
+        // Switch to MySQL + add an SSH agent tunnel.
         info.driver = DatabaseDriver::MySql;
         info.port = 3306;
         info.ssh = Some(SshConfig {
@@ -464,7 +303,7 @@ fn update_changes_driver_and_ssh_fields() {
         assert_eq!(ssh.host, "ssh.example");
         assert!(matches!(ssh.auth, SshAuth::Agent));
 
-        // Now drop SSH back to None and verify the row reflects that.
+        // Drop SSH back to None and verify the row reflects that.
         info.ssh = None;
         repo.update(&info).await.unwrap();
         let l2 = &repo.load_all().await.unwrap()[0];
@@ -485,7 +324,6 @@ fn delete_removes_row_and_password() {
         info.password = "ephemeral".to_string();
         repo.create(&info).await.unwrap();
 
-        // Sanity: password is in mock keyring.
         assert_eq!(
             ConnectionsRepository::get_connection_password(&id).unwrap(),
             "ephemeral"
@@ -493,9 +331,7 @@ fn delete_removes_row_and_password() {
 
         repo.delete(&id).await.unwrap();
 
-        // Row gone.
         assert!(repo.load_all().await.unwrap().is_empty());
-        // Password gone (mock keyring returns NoEntry).
         assert!(ConnectionsRepository::get_connection_password(&id).is_err());
     });
 }
@@ -505,10 +341,8 @@ fn ssh_key_passphrase_roundtrip_via_keyring() {
     init_keyring_mock();
     let id = Uuid::new_v4();
 
-    // Initially: nothing stored.
     assert!(ConnectionsRepository::get_ssh_key_passphrase(&id).is_none());
 
-    // Store, then read back.
     ConnectionsRepository::store_ssh_key_passphrase(&id, "hunter2").unwrap();
     assert_eq!(
         ConnectionsRepository::get_ssh_key_passphrase(&id).as_deref(),
