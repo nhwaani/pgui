@@ -123,18 +123,26 @@ pub fn delete_connection(connection: ConnectionInfo, cx: &mut App) {
 // =============================================================================
 
 async fn connect_async(mut cic: ConnectionInfo, db_manager: DatabaseManager, cx: &mut AsyncApp) {
-    // Load password from keychain on-demand
-    if let Ok(password) = ConnectionsRepository::get_connection_password(&cic.id) {
-        cic.password = password;
-    } else {
-        notify_connect_failure(
-            cx,
-            "Saved password not found in keychain. Re-enter the password and click Update.",
-        );
-        let _ = cx.update_global::<ConnectionState, _>(|state, _cx| {
-            state.connection_state = ConnectionStatus::Disconnected;
-        });
-        return;
+    // The form may have already supplied a password (when the user just
+    // typed one and clicked Connect). Only consult the keychain when the
+    // ConnectionInfo arrives without a password — e.g. when the user
+    // clicks Connect on a saved entry from the connection list, where
+    // load_all() deliberately leaves the password empty.
+    if cic.password.is_empty() {
+        match ConnectionsRepository::get_connection_password(&cic.id) {
+            Ok(password) => cic.password = password,
+            Err(_) => {
+                notify_connect_failure(
+                    cx,
+                    "No password on file for this connection. Type one in the form and \
+                     click Connect (or Update to persist it).",
+                );
+                let _ = cx.update_global::<ConnectionState, _>(|state, _cx| {
+                    state.connection_state = ConnectionStatus::Disconnected;
+                });
+                return;
+            }
+        }
     }
 
     let connect_result = db_manager.connect(&cic).await;

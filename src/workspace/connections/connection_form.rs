@@ -386,6 +386,19 @@ impl ConnectionForm {
 
     fn connect(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         if let Some(connection) = self.get_connection(window, cx) {
+            // Persist the typed password to the keyring synchronously so
+            // future reconnects (this session and after restart) don't
+            // require the user to retype it. Failures here are logged
+            // but non-fatal: the connect attempt still uses the typed
+            // password we have in memory.
+            if !connection.password.is_empty() {
+                if let Err(e) = ConnectionsRepository::save_connection_password(
+                    &connection.id,
+                    &connection.password,
+                ) {
+                    tracing::warn!("Failed to persist connection password: {}", e);
+                }
+            }
             // Persist any SSH key passphrase the user typed (when applicable).
             self.persist_ssh_passphrase_if_needed(&connection, cx);
             connect(&connection, cx);

@@ -337,6 +337,31 @@ fn delete_removes_row_and_password() {
 }
 
 #[test]
+fn save_connection_password_roundtrip() {
+    // The form's Connect handler calls save_connection_password directly
+    // (not via the create/update path) so the typed password survives
+    // future reconnects without forcing an Update first. Verify the
+    // helper writes-and-reads through the keyring.
+    init_keyring_mock();
+    let id = Uuid::new_v4();
+
+    assert!(ConnectionsRepository::get_connection_password(&id).is_err());
+
+    ConnectionsRepository::save_connection_password(&id, "first-pass").unwrap();
+    assert_eq!(
+        ConnectionsRepository::get_connection_password(&id).unwrap(),
+        "first-pass"
+    );
+
+    // Overwrite (idempotent on the same id) -- new value should win.
+    ConnectionsRepository::save_connection_password(&id, "second-pass").unwrap();
+    assert_eq!(
+        ConnectionsRepository::get_connection_password(&id).unwrap(),
+        "second-pass"
+    );
+}
+
+#[test]
 fn ssh_key_passphrase_roundtrip_via_keyring() {
     init_keyring_mock();
     let id = Uuid::new_v4();

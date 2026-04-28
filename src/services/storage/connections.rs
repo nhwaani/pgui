@@ -64,6 +64,14 @@ impl ConnectionsRepository {
             .context("Failed to store password in keyring")
     }
 
+    /// Persist a database password to the keyring without going through
+    /// `create` / `update`. The connection form calls this when the user
+    /// clicks **Connect** so the typed password survives subsequent
+    /// reconnects without forcing an explicit Update first.
+    pub fn save_connection_password(connection_id: &Uuid, password: &str) -> Result<()> {
+        Self::store_password(connection_id, password)
+    }
+
     fn get_password(connection_id: &Uuid) -> Result<String> {
         let entry = Self::keyring_entry(&connection_id.to_string())?;
         entry
