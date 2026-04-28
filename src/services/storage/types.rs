@@ -297,25 +297,38 @@ impl ConnectionInfo {
     /// Create a Postgres `PgConnectOptions` for the given host/port pair.
     /// `host`/`port` may differ from `self.hostname`/`self.port` when an
     /// SSH tunnel is in use (caller passes the tunnel-local endpoint).
+    ///
+    /// If `self.database` is empty we deliberately do not call
+    /// `.database(...)` so sqlx falls back to the server-side default
+    /// (Postgres uses a database named after the user; MySQL leaves you
+    /// with no current database, expecting a later `USE <db>`).
     pub fn to_pg_connect_options_for(&self, host: &str, port: u16) -> PgConnectOptions {
-        PgConnectOptions::new()
+        let mut opts = PgConnectOptions::new()
             .host(host)
             .port(port)
             .username(&self.username)
             .password(&self.password)
-            .database(&self.database)
-            .ssl_mode(self.ssl_mode.to_pg_ssl_mode())
+            .ssl_mode(self.ssl_mode.to_pg_ssl_mode());
+        if !self.database.is_empty() {
+            opts = opts.database(&self.database);
+        }
+        opts
     }
 
     /// Create a MySQL `MySqlConnectOptions` for the given host/port pair.
+    /// See [`Self::to_pg_connect_options_for`] for the empty-database
+    /// semantics.
     pub fn to_mysql_connect_options_for(&self, host: &str, port: u16) -> MySqlConnectOptions {
-        MySqlConnectOptions::new()
+        let mut opts = MySqlConnectOptions::new()
             .host(host)
             .port(port)
             .username(&self.username)
             .password(&self.password)
-            .database(&self.database)
-            .ssl_mode(self.ssl_mode.to_mysql_ssl_mode())
+            .ssl_mode(self.ssl_mode.to_mysql_ssl_mode());
+        if !self.database.is_empty() {
+            opts = opts.database(&self.database);
+        }
+        opts
     }
 
     /// Direct-connection Postgres options (no SSH tunnel).

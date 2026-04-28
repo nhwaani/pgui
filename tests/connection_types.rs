@@ -226,3 +226,24 @@ fn pg_connect_options_carry_credentials_and_database() {
     assert_eq!(opts.get_username(), "alice");
     assert_eq!(opts.get_database(), Some("appdb"));
 }
+
+#[test]
+fn empty_database_falls_back_to_server_default_pg() {
+    // When the form leaves Database blank we must NOT call .database("")
+    // on sqlx's PgConnectOptions — that would tell PG to connect to a
+    // database literally named empty-string. Instead we leave it unset
+    // so PG uses its default (a database named after the user).
+    let mut info = ConnectionInfo::default();
+    info.database = String::new();
+    let opts = info.to_pg_connect_options_for("db", 5432);
+    assert_eq!(opts.get_database(), None);
+}
+
+#[test]
+fn empty_database_falls_back_to_server_default_mysql() {
+    let mut info = ConnectionInfo::default();
+    info.driver = DatabaseDriver::MySql;
+    info.database = String::new();
+    let opts = info.to_mysql_connect_options_for("db", 3306);
+    assert_eq!(opts.get_database(), None);
+}

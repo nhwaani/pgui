@@ -133,7 +133,7 @@ impl ConnectionForm {
             });
             let database = cx.new(|cx| {
                 InputState::new(window, cx)
-                    .placeholder("Database")
+                    .placeholder("Database (optional)")
                     .clean_on_escape()
             });
             let port = cx.new(|cx| {
@@ -506,11 +506,13 @@ impl ConnectionForm {
             password.to_string()
         };
 
+        // Database is optional: an empty value tells sqlx to use the
+        // server-side default (PG: a DB named after the user; MySQL:
+        // no current DB, switch with `USE <db>` later).
         if name.is_empty()
             || hostname.is_empty()
             || username.is_empty()
             || password.is_empty()
-            || database.is_empty()
             || port.is_empty()
         {
             window.push_notification(
@@ -763,7 +765,7 @@ impl Render for ConnectionForm {
                         field()
                             .col_span(2)
                             .label("Database")
-                            .required(true)
+                            .required(false)
                             .child(Input::new(&self.database)),
                     ),
             )
