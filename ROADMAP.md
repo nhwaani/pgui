@@ -68,7 +68,7 @@
 | Feature | Status | Notes |
 |---------|--------|-------|
 | Results table (spreadsheet view) | ✅ | Sortable columns, resizable |
-| Export to CSV (streaming) | ✅ | Handles large datasets |
+| Export to CSV (streaming) | ✅ | Handles large datasets, comma-delimited |
 | Export to JSON/NDJSON (streaming) | ✅ | Handles large datasets |
 | Execution time / rows affected | ✅ | Displayed in results panel |
 | Error display | ✅ | Styled error panel |
@@ -92,7 +92,14 @@
 | **Hide columns** | Low | Per-table column visibility |
 | **Column type metadata popup** | Medium | Click cell → see type, nullable, ordinal |
 | **Export filtered results** | Medium | Export only visible/filtered subset |
-| **Export to Excel (XLSX)** | Low | Beyond CSV/JSON |
+| **Export to TSV** | Medium | Tab-delimited, with configurable delimiter |
+| **Export to Excel (XLSX)** | Medium | Beyond CSV/JSON |
+| **Export to Parquet** | Low | Apache Parquet columnar format |
+| **Export to Markdown** | Low | Pipe-table format for docs |
+| **Export to HTML** | Low | Styled HTML table |
+| **Import TSV** | Medium | Tab-delimited files → table |
+| **Import Excel (XLSX)** | Medium | Read sheets → database table |
+| **Import Parquet** | Low | Apache Parquet → table |
 | **Copy row/column to clipboard** | Medium | Right-click → copy |
 
 ---
@@ -116,12 +123,18 @@
 | **Delete / drop index** | Medium | Schema tree context menu |
 | **Create view** | Medium | Save query as view |
 | **Create trigger** | Medium | DB4S trigger editor |
-| **Import CSV into table** | 🔴 **Critical** | DB4S ImportCsvDialog — CSV → table |
+| **Import CSV/TSV into table** | 🔴 **Critical** | DB4S ImportCsvDialog — delimited files → table |
 | **Import JSON into table** | Medium | JSON → table |
-| **Export table as CSV** | High | Right-click → export |
-| **Export table as JSON** | High | Right-click → export |
-| **Export table as SQL dump** | Medium | DB4S ExportSqlDialog |
+| **Import Excel (XLSX) into table** | Medium | Read Excel sheets → table |
+| **Import Parquet into table** | Low | Apache Parquet format → table |
 | **Import from SQL dump** | Medium | DB4S import SQL file |
+| **Export table as CSV/TSV** | High | Right-click → export with configurable delimiter |
+| **Export table as JSON** | High | Right-click → export |
+| **Export table as Excel (XLSX)** | Medium | Right-click → export with sheet name |
+| **Export table as Parquet** | Low | Apache Parquet format |
+| **Export table as SQL dump** | Medium | DB4S ExportSqlDialog |
+| **Export table as Markdown** | Low | Pipe-to-table format for docs |
+| **Export table as HTML** | Low | Styled HTML table export |
 | **Copy CREATE statement** | Medium | Right-click → copy DDL |
 | **Table/column comments** | Low | Read/write SQL comments |
 | **Schema comparison** | Low | Diff two databases |
@@ -270,10 +283,10 @@
 
 | Priority | Features |
 |----------|----------|
-| 🔴 **Critical** | Multiple SQL tabs, Browse table data, Inline cell editing, Create table dialog, Import CSV, Preferences dialog |
-| 🟠 **High** | Recent connections, Find & Replace (editor + data), Save SQL to file, Search/filter records, Delete records, Add records, Export filtered data, Create index, Keyboard shortcuts, Agent module tests, Integration tests |
-| 🟡 **Medium** | Connection bookmarks, Read-only mode, SSL picker, Drag-drop tables, Paginated scrolling, Column display format, Conditional formatting, Null styling, Row ID toggle, Freeze columns, Hide columns, Cell metadata popup, Create view, Export SQL dump, Import SQL dump, Import JSON, Copy CREATE, Chart/plot dock, Compact/vacuum, PRAGMA settings, Encryption, Attach/detach DB, AI data analysis, AI NL queries, AI error explanation, Multi-model config, Status bar, Recent files, Drag-drop files, Linux support, CI/CD, Windows support |
-| 🟢 **Low** | Multi-window, Fullscreen, Print, Export XLSX, Export settings, Proxy config, Auto-load project, Schema comparison, Table comments, Multi-cursor, Kill queries, DB properties, Load extensions, Docker, Nightly builds, Snap/Flatpak, Scoop/Chocolatey, App bundle, Performance benchmarks, Accessibility |
+| 🔴 **Critical** | Multiple SQL tabs, Browse table data, Inline cell editing, Create table dialog, Import CSV/TSV, Preferences dialog |
+| 🟠 **High** | Recent connections, Find & Replace (editor + data), Save SQL to file, Search/filter records, Delete records, Add records, Export filtered data (CSV/TSV/JSON), Create index, Keyboard shortcuts, Agent module tests, Integration tests |
+| 🟡 **Medium** | Connection bookmarks, Read-only mode, SSL picker, Drag-drop tables, Paginated scrolling, Column display format, Conditional formatting, Null styling, Row ID toggle, Freeze columns, Hide columns, Cell metadata popup, Create view, Export SQL dump, Import SQL dump, Import JSON, Import Excel (XLSX), Export Excel (XLSX), Export TSV, Copy CREATE, Chart/plot dock, Compact/vacuum, PRAGMA settings, Encryption, Attach/detach DB, AI data analysis, AI NL queries, AI error explanation, Multi-model config, Status bar, Recent files, Drag-drop files, Linux support, CI/CD, Windows support |
+| 🟢 **Low** | Multi-window, Fullscreen, Print, Export Parquet, Export Markdown, Export HTML, Import Parquet, Export settings, Proxy config, Auto-load project, Schema comparison, Table comments, Multi-cursor, Kill queries, DB properties, Load extensions, Docker, Nightly builds, Snap/Flatpak, Scoop/Chocolatey, App bundle, Performance benchmarks, Accessibility |
 
 ---
 
@@ -288,6 +301,9 @@
 | Browse, edit, add, delete records | ⚡ Partial (browse only) | v0.2 |
 | Search records | ❌ | v0.2 |
 | Import/export CSV | ⚡ Partial (export only) | v0.2 |
+| Import/export TSV | ❌ | v0.2 |
+| Import/export Excel (XLSX) | ❌ | v0.3 |
+| Import/export Parquet | ❌ | v0.4 |
 | Import/export SQL dump | ❌ | v0.3 |
 | Import/export JSON | ⚡ Partial (export only) | v0.2 |
 | Issue SQL queries & inspect results | ✅ | v0.1 |
