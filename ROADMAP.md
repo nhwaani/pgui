@@ -317,3 +317,99 @@
 | Attach/detach databases | ❌ | v0.3 |
 | Extensions | ❌ | v0.4 |
 | Proxy configuration | ❌ | v0.4 |
+
+---
+
+## 🚀 Release Plan
+
+> Version milestones grouping features by user-vertical and dependency order.
+> Each release should ship a **coherent, testable, valuable increment**.
+
+### v0.1 — "MVP" ✅ *(shipped)*
+
+| Area | What shipped |
+|------|-------------|
+| 🗄️ Connection | PostgreSQL & MySQL connect, SSH tunnel, keyring, database switch, disconnect |
+| 📝 Editor | Multi-line SQL editor, LSP completions, AI inline completions, AI code actions, format, execute, toggle AI |
+| 📊 Results | Spreadsheet table, CSV/JSON export, execution time, error display, resizable split |
+| 🏗️ Schema | Schema tree, column details, schema-aware AI |
+| 🧩 AI | Agent chat, tool execution, schema-aware prompts |
+| 🖥️ UI | GPUI Metal render, dark/light theme, resizable panels, notifications, header, footer, history |
+| 🧪 Testing | Connection types (20), SSH config (6), storage/migration (12), agent builder (1) |
+
+---
+
+### v0.2 — "Data Browser" 🎯 *(current target)*
+
+**Theme:** Make PGUI a full data browser — browse, edit, search, and import/export data.
+
+| Area | Features | Est. Effort |
+|------|----------|-------------|
+| 📝 Editor | **Multiple SQL tabs**, SQL history/log, Save SQL to file, Find & Replace | Large |
+| 📊 Results | **Browse table data** (click → rows), **Inline cell editing**, Add/delete/duplicate records, Search/filter records, Paginated scrolling, Column display format, NULL styling, Row ID toggle, Copy row/column | Large |
+| 📊 Export | **Import CSV/TSV** (dialog), Export TSV, Export filtered subset, Export Markdown, Export HTML | Medium |
+| 🖥️ UI | **Preferences dialog**, Keyboard shortcuts, Recent connections menu, Status bar improvements, Recent files/projects | Medium |
+| 🧪 Testing | Agent module tests, Integration tests | Small |
+
+**Goal:** Feature parity with DB4S for browsing & editing data.
+
+---
+
+### v0.3 — "Schema Manager"
+
+**Theme:** Full schema lifecycle management — create, alter, drop, document.
+
+| Area | Features | Est. Effort |
+|------|----------|-------------|
+| 🏗️ Schema | **Create table dialog**, Create index, Modify table (add/drop column), Drop table/index, Create view, Copy CREATE statement, Table/column comments | Large |
+| 📦 Import/Export | **Export SQL dump**, **Import SQL dump**, Export Excel (XLSX), Import Excel (XLSX), Import JSON | Medium |
+| 🔧 Admin | Compact/vacuum, PRAGMA settings, Encryption (SQLCipher), Attach/detach database | Medium |
+| 🧩 AI | AI error explanation, AI data import mapping (CSV → column types) | Small |
+| 🖥️ UI | Drag-and-drop tables into editor, SQL block comment toggle, Editor font/theme prefs, Read-only mode toggle, SSL cert picker | Medium |
+
+**Goal:** Feature parity with DB4S for schema management.
+
+---
+
+### v0.4 — "Analytics & Platform"
+
+**Theme:** Data visualization, natural-language queries, cross-platform support.
+
+| Area | Features | Est. Effort |
+|------|----------|-------------|
+| 📈 Plotting | **Chart/plot dock** (bar, line, scatter), Axis config, Legend/colors, Export plot as image, Print plot | Large |
+| 🧩 AI | **AI NL queries** (natural language → SQL), AI data analysis (summaries, outliers), Multi-model config, AI query optimization | Medium |
+| 📦 Packaging | **Linux support**, Windows support, App bundle/DMG, CI/CD pipeline | Large |
+| 📊 Export | Export Parquet, Import Parquet | Small |
+| 🖥️ UI | Multi-window support, Fullscreen mode, Drag-and-drop file open, Connection bookmarks/favourites | Medium |
+| 🔧 Admin | Load extensions, Database properties/metadata, Kill active queries, Auto-load last project | Small |
+
+**Goal:** Feature parity with DB4S for analytics & visualization.
+
+---
+
+### v1.0 — "Enterprise Ready" 🏆
+
+**Theme:** Polish, performance, accessibility, distribution.
+
+| Area | Features | Est. Effort |
+|------|----------|-------------|
+| 📦 Distribution | Nightly builds, Snap/Flatpak, Scoop/Chocolatey, Docker image | Medium |
+| 🖥️ UI | Print support, Export settings, Proxy configuration, Schema comparison | Medium |
+| 🧪 Quality | Performance benchmarks (large dataset), Accessibility (screen reader, keyboard nav), UI component tests, Database integration tests (docker-compose) | Medium |
+| 🧩 Misc | Multi-cursor editing, Connection sharing/export, Import connections from other tools, Auto-save SQL files | Small |
+
+**Goal:** Production-ready, distributable, enterprise-grade SQL client.
+
+---
+
+### 🏁 Beyond v1.0 — "Future" 🔮
+
+| Feature | Notes |
+|---------|-------|
+| Multiple simultaneous connections | Tab-per-connection or split views |
+| Create trigger | DB4S trigger editor |
+| Import connections from DBeaver/DataGrip | Cross-tool migration |
+| Connection sharing / export | Share config as encrypted file |
+| Schema comparison | Diff two databases |
+| AI-powered data analysis | Deep-dive analytics |
