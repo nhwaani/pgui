@@ -6,6 +6,7 @@ mod types;
 
 pub use connections::ConnectionsRepository;
 pub use history::QueryHistoryRepository;
+#[allow(unused_imports)]
 pub use types::*;
 
 use anyhow::Result;
@@ -35,7 +36,11 @@ impl AppStore {
         Self::from_path(db_path).await
     }
 
-    async fn from_path(db_path: PathBuf) -> Result<Self> {
+    /// Open (or create) an `AppStore` against a specific SQLite path.
+    /// Schema initialization and migrations run unconditionally on each
+    /// open. Used by tests to point at a temp file; production callers
+    /// should use [`AppStore::singleton`].
+    pub async fn from_path(db_path: PathBuf) -> Result<Self> {
         if let Some(parent) = db_path.parent() {
             std::fs::create_dir_all(parent)?;
         }
@@ -78,11 +83,18 @@ impl AppStore {
                 CREATE TABLE IF NOT EXISTS connections (
                     id TEXT PRIMARY KEY,
                     name TEXT NOT NULL UNIQUE,
+                    driver TEXT NOT NULL DEFAULT 'postgres',
                     hostname TEXT NOT NULL,
                     username TEXT NOT NULL,
                     database TEXT NOT NULL,
                     port INTEGER NOT NULL,
                     ssl_mode TEXT NOT NULL DEFAULT 'prefer',
+                    ssh_enabled INTEGER NOT NULL DEFAULT 0,
+                    ssh_host TEXT,
+                    ssh_port INTEGER,
+                    ssh_username TEXT,
+                    ssh_auth_type TEXT,
+                    ssh_key_path TEXT,
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                 )
@@ -125,34 +137,36 @@ impl AppStore {
         Ok(())
     }
 
-    /// Migrate schema for existing databases
+    /// Migrate schema for existing databases.
+    ///
+    /// Each ALTER TABLE is attempted independently. SQLite returns an
+    /// error when a column already exists, which we treat as a no-op.
     async fn migrate_schema(&self) -> Result<()> {
-        // Try to check if ssl_mode column exists by querying a single row
-        let has_ssl_mode = sqlx::query("SELECT ssl_mode FROM connections LIMIT 1")
-            .fetch_optional(&self.pool)
-            .await
-            .is_ok();
+        let migrations: &[(&str, &str)] = &[
+            ("ssl_mode", "ALTER TABLE connections ADD COLUMN ssl_mode TEXT NOT NULL DEFAULT 'prefer'"),
+            ("driver", "ALTER TABLE connections ADD COLUMN driver TEXT NOT NULL DEFAULT 'postgres'"),
+            ("ssh_enabled", "ALTER TABLE connections ADD COLUMN ssh_enabled INTEGER NOT NULL DEFAULT 0"),
+            ("ssh_host", "ALTER TABLE connections ADD COLUMN ssh_host TEXT"),
+            ("ssh_port", "ALTER TABLE connections ADD COLUMN ssh_port INTEGER"),
+            ("ssh_username", "ALTER TABLE connections ADD COLUMN ssh_username TEXT"),
+            ("ssh_auth_type", "ALTER TABLE connections ADD COLUMN ssh_auth_type TEXT"),
+            ("ssh_key_path", "ALTER TABLE connections ADD COLUMN ssh_key_path TEXT"),
+        ];
 
-        if !has_ssl_mode {
-            tracing::debug!("Migration: ssl_mode column not found, adding it...");
-
-            // Add ssl_mode column with default value
-            match sqlx::query(
-                "ALTER TABLE connections ADD COLUMN ssl_mode TEXT NOT NULL DEFAULT 'prefer'",
-            )
-            .execute(&self.pool)
-            .await
-            {
-                Ok(_) => {
-                    tracing::debug!("Migration: Successfully added ssl_mode column");
-                }
-                Err(e) => {
-                    // If column already exists, SQLite will error - that's okay
-                    tracing::warn!("Migration: Column may already exist: {}", e);
-                }
+        for (col, ddl) in migrations {
+            let probe = format!("SELECT {} FROM connections LIMIT 1", col);
+            let exists = sqlx::query(&probe)
+                .fetch_optional(&self.pool)
+                .await
+                .is_ok();
+            if exists {
+                tracing::debug!("Migration: column '{}' already exists", col);
+                continue;
             }
-        } else {
-            tracing::debug!("Migration: ssl_mode column already exists");
+            tracing::debug!("Migration: adding column '{}'", col);
+            if let Err(e) = sqlx::query(ddl).execute(&self.pool).await {
+                tracing::warn!("Migration: ALTER TABLE for '{}' failed (may already exist): {}", col, e);
+            }
         }
 
         Ok(())

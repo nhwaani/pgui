@@ -1,0 +1,231 @@
+{
+  "$schema": "https://github.com/longbridge/gpui-component/raw/refs/heads/main/.theme-schema.json",
+  "name": "Tokyo Night",
+  "author": "Tokyo Night Zed Importer",
+  "url": "https://github.com/folke/tokyonight.nvim",
+  "themes": [
+    {
+      "name": "Tokyo Night",
+      "mode": "dark",
+      "colors": {
+        "accent.background": "#1a1b26",
+        "accent.foreground": "#bb9af7",
+        "background": "#1a1b26",
+        "border": "#16161e",
+        "ring": "#bb9af7",
+        "foreground": "#a9b1d6",
+        "input.border": "#3b4261",
+        "link.active.foreground": "#7dcfff",
+        "link.foreground": "#7dcfff",
+        "link.hover.foreground": "#7dcfff",
+        "list.active.background": "#7aa2f722",
+        "list.active.border": "#7aa2f7",
+        "list.even.background": "#1a1b26",
+        "list.head.background": "#16161e",
+        "muted.background": "#16161e",
+        "muted.foreground": "#565f89",
+        "panel.background": "#16161e",
+        "popover.background": "#1a1b26",
+        "primary.active.background": "#7aa2f7",
+        "primary.background": "#7aa2f7",
+        "primary.foreground": "#1a1b26",
+        "scrollbar.background": "#1a1b2600",
+        "scrollbar.thumb.background": "#414868",
+        "secondary.active.background": "#292e42",
+        "secondary.background": "#414868",
+        "secondary.foreground": "#a9b1d6",
+        "secondary.hover.background": "#363b5499",
+        "tab.active.background": "#414868",
+        "tab.active.foreground": "#a9b1d6",
+        "tab.background": "#16161e00",
+        "tab.foreground": "#787c99",
+        "tab_bar.background": "#16161e",
+        "title_bar.background": "#16161e",
+        "title_bar.border": "#101014",
+        "base.red": "#f7768e",
+        "base.green": "#73daca",
+        "base.yellow": "#e0af68",
+        "base.blue": "#7aa2f7",
+        "base.magenta": "#bb9af7",
+        "base.magenta.light": "#bb9af766",
+        "base.cyan": "#7dcfff"
+      },
+      "highlight": {
+        "editor.foreground": "#a9b1d6",
+        "editor.background": "#1a1b26",
+        "editor.active_line.background": "#414868",
+        "editor.line_number": "#3b4261",
+        "editor.active_line_number": "#a9b1d6",
+        "conflict": "#ff9e64",
+        "created": "#9ece6a",
+        "deleted": "#f7768e",
+        "error": "#f7768e",
+        "hidden": "#565f89",
+        "hint": "#9ece6a",
+        "ignored": "#565f89",
+        "info": "#7dcfff",
+        "modified": "#e0af68",
+        "predictive": "#565f89",
+        "renamed": "#9ece6a",
+        "success": "#73daca",
+        "unreachable": "#787c99",
+        "warning": "#e0af68",
+        "syntax": {
+          "variable": {
+            "color": "#a9b1d6"
+          },
+          "variable.builtin": {
+            "color": "#f7768e"
+          },
+          "variable.parameter": {
+            "color": "#a9b1d6"
+          },
+          "variable.member": {
+            "color": "#a9b1d6"
+          },
+          "variable.special": {
+            "color": "#f7768e",
+            "font_style": "italic"
+          },
+          "constant": {
+            "color": "#ff9e64"
+          },
+          "constant.builtin": {
+            "color": "#ff9e64"
+          },
+          "constant.macro": {
+            "color": "#bb9af7"
+          },
+          "module": {
+            "color": "#a9b1d6"
+          },
+          "label": {
+            "color": "#a9b1d6"
+          },
+          "keyword": {
+            "color": "#bb9af7"
+          },
+          "keyword.control": {
+            "color": "#bb9af7"
+          },
+          "keyword.control.conditional": {
+            "color": "#bb9af7"
+          },
+          "keyword.control.repeat": {
+            "color": "#bb9af7"
+          },
+          "keyword.control.import": {
+            "color": "#bb9af7"
+          },
+          "keyword.control.return": {
+            "color": "#bb9af7"
+          },
+          "keyword.control.exception": {
+            "color": "#bb9af7"
+          },
+          "keyword.operator": {
+            "color": "#89ddff"
+          },
+          "keyword.directive": {
+            "color": "#bb9af7"
+          },
+          "keyword.function": {
+            "color": "#7aa2f7"
+          },
+          "keyword.type": {
+            "color": "#0db9d7"
+          },
+          "keyword.storage": {
+            "color": "#bb9af7"
+          },
+          "namespace": {
+            "color": "#a9b1d6"
+          },
+          "punctuation.bracket": {
+            "color": "#89ddff"
+          },
+          "punctuation.delimiter": {
+            "color": "#89ddff"
+          },
+          "string": {
+            "color": "#9ece6a"
+          },
+          "string.special": {
+            "color": "#bb9af7"
+          },
+          "string.regex": {
+            "color": "#9ece6a"
+          },
+          "string.escape": {
+            "color": "#bb9af7"
+          },
+          "character": {
+            "color": "#9ece6a"
+          },
+          "character.special": {
+            "color": "#bb9af7"
+          },
+          "comment": {
+            "color": "#565f89"
+          },
+          "boolean": {
+            "color": "#ff9e64"
+          },
+          "number": {
+            "color": "#ff9e64"
+          },
+          "function": {
+            "color": "#7aa2f7"
+          },
+          "function.builtin": {
+            "color": "#7aa2f7"
+          },
+          "function.method": {
+            "color": "#7aa2f7"
+          },
+          "function.call": {
+            "color": "#7aa2f7"
+          },
+          "function.macro": {
+            "color": "#bb9af7"
+          },
+          "constructor": {
+            "color": "#f7768e"
+          },
+          "type": {
+            "color": "#0db9d7"
+          },
+          "type.builtin": {
+            "color": "#0db9d7"
+          },
+          "tag": {
+            "color": "#f7768e"
+          },
+          "attribute": {
+            "color": "#bb9af7"
+          },
+          "text.literal": {
+            "color": "#9ece6a"
+          },
+          "title": {
+            "color": "#ff9e64"
+          },
+          "emphasis": {
+            "color": "#f7768e",
+            "font_style": "italic"
+          },
+          "strong": {
+            "color": "#f7768e",
+            "font_weight": 700
+          },
+          "link_text": {
+            "color": "#73daca"
+          },
+          "link_uri": {
+            "color": "#73daca"
+          }
+        }
+      }
+    }
+  ]
+}

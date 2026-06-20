@@ -6,6 +6,8 @@
 use std::time::Duration;
 
 use gpui::*;
+use gpui_component::WindowExt as _;
+use gpui_component::notification::NotificationType;
 
 use crate::services::{AppStore, ConnectionInfo, ConnectionsRepository, DatabaseManager};
 
@@ -121,20 +123,30 @@ pub fn delete_connection(connection: ConnectionInfo, cx: &mut App) {
 // =============================================================================
 
 async fn connect_async(mut cic: ConnectionInfo, db_manager: DatabaseManager, cx: &mut AsyncApp) {
-    // Load password from keychain on-demand
-    if let Ok(password) = ConnectionsRepository::get_connection_password(&cic.id) {
-        cic.password = password;
-    } else {
-        let _ = cx.update_global::<ConnectionState, _>(|state, _cx| {
-            state.connection_state = ConnectionStatus::Disconnected;
-        });
-        return;
+    // The form may have already supplied a password (when the user just
+    // typed one and clicked Connect). Only consult the keychain when the
+    // ConnectionInfo arrives without a password — e.g. when the user
+    // clicks Connect on a saved entry from the connection list, where
+    // load_all() deliberately leaves the password empty.
+    if cic.password.is_empty() {
+        match ConnectionsRepository::get_connection_password(&cic.id) {
+            Ok(password) => cic.password = password,
+            Err(_) => {
+                notify_connect_failure(
+                    cx,
+                    "No password on file for this connection. Type one in the form and \
+                     click Connect (or Update to persist it).",
+                );
+                let _ = cx.update_global::<ConnectionState, _>(|state, _cx| {
+                    state.connection_state = ConnectionStatus::Disconnected;
+                });
+                return;
+            }
+        }
     }
 
-    // Use secure connection options instead of string
-    let connect_options = cic.to_pg_connect_options();
-
-    if let Ok(_) = db_manager.connect_with_options(connect_options).await {
+    let connect_result = db_manager.connect(&cic).await;
+    if let Ok(_) = connect_result {
         if let Ok(tables) = db_manager.get_tables().await {
             let _ = cx.update_global::<EditorState, _>(|state, _cx| {
                 state.tables = tables;
@@ -184,12 +196,32 @@ async fn connect_async(mut cic: ConnectionInfo, db_manager: DatabaseManager, cx:
                 .await;
         }
     } else {
-        tracing::warn!("No Connect :(");
+        let err_msg = match connect_result {
+            Err(e) => format!("Connect failed: {}", e),
+            Ok(_) => unreachable!(),
+        };
+        tracing::warn!("{}", err_msg);
+        notify_connect_failure(cx, err_msg);
         let _ = cx.update_global::<ConnectionState, _>(|state, _cx| {
             state.active_connection = None;
             state.connection_state = ConnectionStatus::Disconnected;
         });
     }
+}
+
+/// Surface a connection failure in the active window so the user
+/// doesn't get silently dropped back to the connection list with no
+/// indication of what went wrong.
+fn notify_connect_failure(cx: &mut AsyncApp, msg: impl Into<String>) {
+    let msg: SharedString = msg.into().into();
+    let _ = cx.update(|cx| {
+        // Push to whichever window is active. If none, log only.
+        if let Some(handle) = cx.active_window() {
+            let _ = handle.update(cx, |_root, window, cx| {
+                window.push_notification((NotificationType::Error, msg.clone()), cx);
+            });
+        }
+    });
 }
 
 async fn disconnect_async(db_manager: DatabaseManager, cx: &mut AsyncApp) {

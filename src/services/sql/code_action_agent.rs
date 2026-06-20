@@ -226,14 +226,11 @@ impl CodeActionProvider for SqlCodeActionProvider {
         let range_end = data.get("range_end").and_then(|v| v.as_u64()).unwrap_or(0) as usize;
         let selection_range = range_start..range_end;
 
-        let Some(mut agent) = self.agent.clone() else {
-            return Task::ready(Ok(()));
-        };
-
         cx.update_global::<EditorCodeActions, _>(|eca, _cx| {
             eca.loading = true;
         });
 
+        let agent = self.agent.clone().unwrap();
         let schema = self.get_schema();
         let state_weak = state.downgrade();
 
@@ -267,7 +264,7 @@ impl CodeActionProvider for SqlCodeActionProvider {
 
             // Call the AI
             let result = match agent
-                .chat_step(vec![ContentBlock::Text { text: prompt }])
+                .chat_stateless(vec![ContentBlock::Text { text: prompt }])
                 .await
             {
                 Ok(AgentResponse::TextResponse { text, .. }) => {

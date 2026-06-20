@@ -1,16 +1,110 @@
 //! Connection type definitions.
 //!
 //! This module contains:
-//! - `SslMode` - SSL mode options for PostgreSQL connections
-//! - `ConnectionInfo` - PostgreSQL connection configuration
+//! - `DatabaseDriver` - which database backend a connection uses
+//! - `SslMode` - SSL mode options (PostgreSQL semantics; mapped to MySQL too)
+//! - `ConnectionInfo` - database connection configuration
 use chrono::{DateTime, Utc};
 use gpui::SharedString;
 use gpui_component::select::SelectItem;
 use serde::{Deserialize, Serialize};
+use sqlx::mysql::{MySqlConnectOptions, MySqlSslMode};
 use sqlx::postgres::{PgConnectOptions, PgSslMode};
 use uuid::Uuid;
 
-/// SSL mode options for PostgreSQL connections
+use crate::services::ssh::SshConfig;
+
+// ============================================================================
+// DatabaseDriver
+// ============================================================================
+
+/// Which database backend a saved connection targets.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "lowercase")]
+pub enum DatabaseDriver {
+    Postgres,
+    MySql,
+}
+
+impl Default for DatabaseDriver {
+    fn default() -> Self {
+        DatabaseDriver::Postgres
+    }
+}
+
+impl DatabaseDriver {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            DatabaseDriver::Postgres => "PostgreSQL",
+            DatabaseDriver::MySql => "MySQL",
+        }
+    }
+
+    pub fn to_db_str(&self) -> &'static str {
+        match self {
+            DatabaseDriver::Postgres => "postgres",
+            DatabaseDriver::MySql => "mysql",
+        }
+    }
+
+    pub fn from_db_str(s: &str) -> Self {
+        match s {
+            "mysql" => DatabaseDriver::MySql,
+            _ => DatabaseDriver::Postgres,
+        }
+    }
+
+    pub fn default_port(&self) -> usize {
+        match self {
+            DatabaseDriver::Postgres => 5432,
+            DatabaseDriver::MySql => 3306,
+        }
+    }
+
+    pub fn all() -> Vec<DatabaseDriver> {
+        vec![DatabaseDriver::Postgres, DatabaseDriver::MySql]
+    }
+
+    #[allow(dead_code)]
+    pub fn from_index(index: usize) -> Self {
+        match index {
+            1 => DatabaseDriver::MySql,
+            _ => DatabaseDriver::Postgres,
+        }
+    }
+
+    pub fn to_index(&self) -> usize {
+        match self {
+            DatabaseDriver::Postgres => 0,
+            DatabaseDriver::MySql => 1,
+        }
+    }
+}
+
+impl SelectItem for DatabaseDriver {
+    type Value = &'static str;
+
+    fn title(&self) -> SharedString {
+        self.as_str().into()
+    }
+
+    fn value(&self) -> &Self::Value {
+        match self {
+            DatabaseDriver::Postgres => &"postgres",
+            DatabaseDriver::MySql => &"mysql",
+        }
+    }
+}
+
+// ============================================================================
+// SslMode
+// ============================================================================
+
+/// SSL mode options for database connections.
+///
+/// These names follow PostgreSQL conventions; for MySQL the variants map
+/// to the closest equivalent (`Disable`/`Prefer` → `Disabled`/`Preferred`,
+/// `Require`/`VerifyCa`/`VerifyFull` → `Required`/`VerifyCa`/`VerifyIdentity`).
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub enum SslMode {
     Disable,
@@ -54,6 +148,17 @@ impl SslMode {
             SslMode::Require => PgSslMode::Require,
             SslMode::VerifyCa => PgSslMode::VerifyCa,
             SslMode::VerifyFull => PgSslMode::VerifyFull,
+        }
+    }
+
+    /// Convert to sqlx MySqlSslMode
+    pub fn to_mysql_ssl_mode(&self) -> MySqlSslMode {
+        match self {
+            SslMode::Disable => MySqlSslMode::Disabled,
+            SslMode::Prefer => MySqlSslMode::Preferred,
+            SslMode::Require => MySqlSslMode::Required,
+            SslMode::VerifyCa => MySqlSslMode::VerifyCa,
+            SslMode::VerifyFull => MySqlSslMode::VerifyIdentity,
         }
     }
 
@@ -137,12 +242,18 @@ impl SslMode {
     }
 }
 
-/// PostgreSQL connection configuration
+// ============================================================================
+// ConnectionInfo
+// ============================================================================
+
+/// Database connection configuration.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ConnectionInfo {
     #[serde(default = "Uuid::new_v4")]
     pub id: Uuid,
     pub name: String,
+    #[serde(default)]
+    pub driver: DatabaseDriver,
     pub hostname: String,
     pub username: String,
     #[serde(skip_serializing_if = "String::is_empty", default)]
@@ -151,10 +262,15 @@ pub struct ConnectionInfo {
     pub port: usize,
     #[serde(default)]
     pub ssl_mode: SslMode,
+    /// Optional SSH tunnel. When `Some`, pgui will open the tunnel first
+    /// and connect to the database through `127.0.0.1:<tunnel-port>`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub ssh: Option<SshConfig>,
 }
 
 impl ConnectionInfo {
-    /// Create a new connection info with the given parameters
+    /// Create a new PostgreSQL connection info with the given parameters.
+    #[allow(dead_code)]
     pub fn new(
         name: String,
         hostname: String,
@@ -167,24 +283,64 @@ impl ConnectionInfo {
         Self {
             id: Uuid::new_v4(),
             name,
+            driver: DatabaseDriver::Postgres,
             hostname,
             username,
             password,
             database,
             port,
             ssl_mode,
+            ssh: None,
         }
     }
 
-    /// Create connection options for sqlx without exposing password
-    pub fn to_pg_connect_options(&self) -> PgConnectOptions {
-        PgConnectOptions::new()
-            .host(&self.hostname)
-            .port(self.port as u16)
+    /// Create a Postgres `PgConnectOptions` for the given host/port pair.
+    /// `host`/`port` may differ from `self.hostname`/`self.port` when an
+    /// SSH tunnel is in use (caller passes the tunnel-local endpoint).
+    ///
+    /// If `self.database` is empty we deliberately do not call
+    /// `.database(...)` so sqlx falls back to the server-side default
+    /// (Postgres uses a database named after the user; MySQL leaves you
+    /// with no current database, expecting a later `USE <db>`).
+    pub fn to_pg_connect_options_for(&self, host: &str, port: u16) -> PgConnectOptions {
+        let mut opts = PgConnectOptions::new()
+            .host(host)
+            .port(port)
             .username(&self.username)
             .password(&self.password)
-            .database(&self.database)
-            .ssl_mode(self.ssl_mode.to_pg_ssl_mode())
+            .ssl_mode(self.ssl_mode.to_pg_ssl_mode());
+        if !self.database.is_empty() {
+            opts = opts.database(&self.database);
+        }
+        opts
+    }
+
+    /// Create a MySQL `MySqlConnectOptions` for the given host/port pair.
+    /// See [`Self::to_pg_connect_options_for`] for the empty-database
+    /// semantics.
+    pub fn to_mysql_connect_options_for(&self, host: &str, port: u16) -> MySqlConnectOptions {
+        let mut opts = MySqlConnectOptions::new()
+            .host(host)
+            .port(port)
+            .username(&self.username)
+            .password(&self.password)
+            .ssl_mode(self.ssl_mode.to_mysql_ssl_mode());
+        if !self.database.is_empty() {
+            opts = opts.database(&self.database);
+        }
+        opts
+    }
+
+    /// Direct-connection Postgres options (no SSH tunnel).
+    #[allow(dead_code)]
+    pub fn to_pg_connect_options(&self) -> PgConnectOptions {
+        self.to_pg_connect_options_for(&self.hostname, self.port as u16)
+    }
+
+    /// Direct-connection MySQL options (no SSH tunnel).
+    #[allow(dead_code)]
+    pub fn to_mysql_connect_options(&self) -> MySqlConnectOptions {
+        self.to_mysql_connect_options_for(&self.hostname, self.port as u16)
     }
 }
 
@@ -193,12 +349,14 @@ impl Default for ConnectionInfo {
         Self {
             id: Uuid::new_v4(),
             name: "Test".to_string(),
+            driver: DatabaseDriver::Postgres,
             hostname: "localhost".to_string(),
             username: "test".to_string(),
             password: "test".to_string(),
             database: "test".to_string(),
             port: 5432,
             ssl_mode: SslMode::default(),
+            ssh: None,
         }
     }
 }
@@ -212,6 +370,7 @@ impl Drop for ConnectionInfo {
         }
     }
 }
+
 
 /// Query history entry
 #[derive(Debug, Clone, Serialize, Deserialize)]

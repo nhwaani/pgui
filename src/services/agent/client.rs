@@ -202,6 +202,76 @@ impl Agent {
         Err(anyhow!("No text or tool calls in assistant response"))
     }
 
+    /// Process a single stateless request without accumulating conversation history.
+    /// Unlike `chat_step`, this does NOT modify self and does NOT store conversation.
+    /// Use this for stateless requests like inline completions or one-shot code actions.
+    pub async fn chat_stateless(&self, user_content: Vec<ContentBlock>) -> Result<AgentResponse> {
+        // Build a fresh inference agent with empty conversation
+        let mut inference_agent = AgentForInference {
+            api_key: self.api_key.clone(),
+            model: self.model.clone(),
+            system_prompt: self.system_prompt.clone(),
+            tool_definitions: self.get_tool_definitions(),
+            conversation: vec![],
+            max_tokens: self.max_tokens,
+        };
+        inference_agent.conversation.push(Message::User {
+            role: "user".to_string(),
+            content: user_content,
+        });
+
+        let response = smol::unblock(move || inference_agent.run_inference()).await?;
+
+        tracing::debug!(
+            usage = ?response.usage,
+            stop_reason = response.stop_reason,
+            model = response.model,
+            "Stateless chat"
+        );
+
+        // Parse the response content
+        let mut tool_calls = Vec::new();
+        let mut text_response = String::new();
+
+        for block in &response.content {
+            match block {
+                ContentBlock::Text { text } => {
+                    text_response = text.clone();
+                }
+                ContentBlock::ToolUse { id, name, input } => {
+                    tool_calls.push(ToolCallData {
+                        id: id.clone(),
+                        name: name.clone(),
+                        input: input.clone(),
+                    });
+                }
+                ContentBlock::ToolResult { .. } => {}
+                ContentBlock::Document { .. } => {}
+            }
+        }
+
+        if !tool_calls.is_empty() {
+            return Ok(AgentResponse::ToolCallRequest {
+                text: if text_response.is_empty() {
+                    None
+                } else {
+                    Some(text_response)
+                },
+                tool_calls,
+                stop_reason: response.stop_reason,
+            });
+        }
+
+        if !text_response.is_empty() {
+            return Ok(AgentResponse::TextResponse {
+                text: text_response,
+                stop_reason: response.stop_reason,
+            });
+        }
+
+        Err(anyhow!("No text or tool calls in stateless response"))
+    }
+
     /// Submit tool results back to the agent
     pub fn submit_tool_results(&mut self, results: Vec<ToolResultData>) {
         let content_blocks: Vec<ContentBlock> = results

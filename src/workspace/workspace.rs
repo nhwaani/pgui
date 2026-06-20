@@ -303,10 +303,10 @@ impl Workspace {
             .flex_1()
             .h_full()
             .bg(cx.theme().background)
-            .when(self.show_tables.clone(), |d| d.child(sidebar))
+            .when(self.show_tables, |d| d.child(sidebar))
             .child(main)
-            .when(self.show_agent.clone(), |d| d.child(agent))
-            .when(self.show_history.clone(), |d| d.child(history));
+            .when(self.show_agent, |d| d.child(agent))
+            .when(self.show_history, |d| d.child(history));
 
         content
     }
