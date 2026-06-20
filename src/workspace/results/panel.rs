@@ -207,7 +207,7 @@ impl ResultsPanel {
 impl Render for ResultsPanel {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         match &self.current_result {
-            Some(QueryExecutionResult::Select(_result)) => v_flex()
+            Some(QueryExecutionResult::Select(_)) => v_flex()
                 .size_full()
                 .p_2()
                 .flex()

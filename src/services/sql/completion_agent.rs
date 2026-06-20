@@ -30,9 +30,9 @@ pub fn build_completion_agent() -> Option<Agent> {
     agent
 }
 
-pub async fn get_completion(agent: &mut Agent, prompt: String) -> Option<String> {
+pub async fn get_completion(agent: &Agent, prompt: String) -> Option<String> {
     match agent
-        .chat_step(vec![ContentBlock::Text { text: prompt }])
+        .chat_stateless(vec![ContentBlock::Text { text: prompt }])
         .await
     {
         Ok(crate::services::agent::AgentResponse::TextResponse { text, .. }) => {

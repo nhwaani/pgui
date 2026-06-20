@@ -32,8 +32,6 @@ pub struct SqlCompletionProvider {
     schema: Arc<RwLock<Option<String>>>,
     /// Counter for generating unique request IDs
     request_counter: Arc<AtomicU64>,
-    /// Track the latest request ID to ignore stale responses
-    latest_request_id: Arc<AtomicU64>,
     inline_completions_enabled: Arc<AtomicBool>,
 }
 
@@ -50,7 +48,6 @@ impl SqlCompletionProvider {
             schema: Arc::new(RwLock::new(None)),
             completions: Arc::new(RwLock::new(completions)),
             request_counter: Arc::new(AtomicU64::new(0)),
-            latest_request_id: Arc::new(AtomicU64::new(0)),
             inline_completions_enabled: Arc::new(AtomicBool::new(false)),
         }
     }
@@ -66,8 +63,7 @@ impl SqlCompletionProvider {
     }
 
     fn get_inline_completions_enabled(&self) -> bool {
-        let guard = self.inline_completions_enabled.load(Ordering::SeqCst);
-        guard.clone()
+        self.inline_completions_enabled.load(Ordering::SeqCst)
     }
 
     /// Adds schema-derived completions (table names, column names, etc.)
@@ -188,10 +184,9 @@ impl CompletionProvider for SqlCompletionProvider {
 
         let rope = rope.clone();
         let request_id = self.next_request_id();
-        let _latest_request_id = self.latest_request_id.clone();
 
-        let mut agent = self.agent.clone().unwrap();
-        let schema = self.get_schema().clone();
+        let agent = self.agent.clone().unwrap();
+        let schema = self.get_schema();
 
         let task = cx.spawn(async move |_this, cx| {
             let res = cx
@@ -199,7 +194,6 @@ impl CompletionProvider for SqlCompletionProvider {
                     let point = rope.offset_to_point(offset);
                     let line_start = rope.line_start_offset(point.row);
                     let line_end = rope.line_end_offset(point.row);
-                    let _current_line = rope.slice(line_start..offset).to_string();
 
                     let prefix = rope.slice(line_start..offset).to_string();
                     let suffix = rope.slice(offset..line_end).to_string();
@@ -217,7 +211,7 @@ impl CompletionProvider for SqlCompletionProvider {
                         context: context,
                     };
                     let prompt = build_completion_prompt(&request, &schema);
-                    let suggestion = get_completion(&mut agent, prompt).await;
+                    let suggestion = get_completion(&agent, prompt).await;
 
                     Ok(suggestion
                         .map(suggestion_response)

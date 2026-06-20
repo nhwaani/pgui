@@ -71,35 +71,6 @@ impl TableDelegate for EnhancedResultsTableDelegate {
     ) -> impl IntoElement {
         let col = self.column(col_ix, cx);
         div().child(format!("{}", col.clone().name))
-        // let col_meta = if !self.rows.is_empty() && col_ix < self.rows[0].len() {
-        //     Some(&self.rows[0][col_ix].column_metadata)
-        // } else {
-        //     None
-        // };
-
-        // let mut th = div();
-
-        // if let Some(meta) = col_meta {
-        //     // Show column name and type
-        //     th = th.child(
-        //         v_flex()
-        //             .gap_1()
-        //             .child(
-        //                 Label::new(&meta.name)
-        //                     .text_sm()
-        //                     .text_color(cx.theme().foreground),
-        //             )
-        //             .child(
-        //                 Label::new(&meta.type_name)
-        //                     .text_xs()
-        //                     .text_color(cx.theme().muted_foreground),
-        //             ),
-        //     );
-        // } else {
-        //     th = th.child(format!("{}", col.name));
-        // }
-
-        // th
     }
 
     fn render_tr(
@@ -189,20 +160,6 @@ impl TableDelegate for EnhancedResultsTableDelegate {
     fn load_more_threshold(&self) -> usize {
         150
     }
-
-    // fn load_more(&mut self, _: &mut Window, cx: &mut Context<TableState<Self>>) {
-    //     self.loading = true;
-    //     cx.spawn(async move |view, cx| {
-    //         // Simulate network request
-    //         Timer::after(Duration::from_secs(1)).await;
-    //         cx.update(|cx| {
-    //             let _ = view.update(cx, |view, _| {
-    //                 view.delegate_mut().loading = false;
-    //             });
-    //         })
-    //     })
-    //     .detach();
-    // }
 
     fn visible_rows_changed(
         &mut self,
